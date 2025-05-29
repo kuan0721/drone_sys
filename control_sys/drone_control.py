@@ -1,19 +1,24 @@
+
+# drone_control.py
 import time
 import sys
+import signal
 from pymavlink import mavutil
+from voltage_reader import VoltageReader
 
 class LowBatteryResumeException(Exception):
     """Raised when voltage drops below threshold to trigger low-battery flow."""
     pass
 
 class DroneController:
-    def __init__(self, connection_string, voltage_threshold=15.2, takeoff_altitude=15, square_size=10):
+    def __init__(self, connection_string, voltage_port, voltage_threshold=15.2,
+                 voltage_baud=9600, takeoff_altitude=15, square_size=10):
         self.connection_string = connection_string
-        self.voltage_threshold = voltage_threshold  # Voltage in volts
+        self.voltage_threshold = voltage_threshold  # volts
         self.takeoff_altitude = takeoff_altitude
         self.square_size = square_size
 
-        # State variables
+        # MAVLink
         self.master = None
         self.initial_yaw_pre_takeoff = None
         self.recorded_position = None
@@ -21,10 +26,32 @@ class DroneController:
         self.recorded_yaw_low_battery = None
         self.next_waypoint = None
 
+        # Voltage reader
+        self.voltage_reader = VoltageReader(port=voltage_port, baud=voltage_baud)
+        self.voltage_reader.register_callback(threshold=self.voltage_threshold,
+                                              callback=self._on_low_voltage)
+
     def connect(self):
+        # MAVLink connection
         self.master = mavutil.mavlink_connection(self.connection_string)
         self.master.wait_heartbeat()
-        print("Connected to drone!")
+        print("Connected to drone via MAVLink!")
+
+        # Start voltage monitoring
+        self.voltage_reader.start()
+        print(f"Started voltage reader on {self.voltage_reader.port}")
+
+    def _on_low_voltage(self, voltage):
+        """Callback when voltage falls below threshold."""
+        print(f"⚠️ Voltage {voltage:.3f} V below threshold {self.voltage_threshold} V, initiating low-battery RTL")
+        # Record state
+        self.recorded_position = self.get_gps_position()
+        self.recorded_next_waypoint = self.next_waypoint
+        self.recorded_yaw_low_battery = self.get_initial_yaw()
+        # Trigger RTL landing
+        self.low_battery_rtl()
+        # Signal mission loop to handle resume
+        raise LowBatteryResumeException()
 
     def get_arm_status(self):
         hb = self.master.recv_match(type='HEARTBEAT', blocking=True, timeout=2)
@@ -36,25 +63,6 @@ class DroneController:
     def get_initial_yaw(self):
         msg = self.master.recv_match(type='VFR_HUD', blocking=True, timeout=2)
         return msg.heading if msg else 0
-
-    def get_voltage(self):
-        msg = self.master.recv_match(type='SYS_STATUS', blocking=True, timeout=2)
-        if msg and msg.voltage_battery:
-            # voltage_battery in mV
-            return msg.voltage_battery / 1000.0
-        return None
-
-    def check_voltage(self):
-        v = self.get_voltage()
-        if v is not None:
-            print(f"[Voltage] {v:.3f} V")
-            if v < self.voltage_threshold:
-                self.recorded_position = self.get_gps_position()
-                self.recorded_next_waypoint = self.next_waypoint
-                self.recorded_yaw_low_battery = self.get_initial_yaw()
-                print(f"Low voltage -> {v:.3f} V, initiating RTL")
-                self.low_battery_rtl()
-                raise LowBatteryResumeException()
 
     def get_gps_position(self):
         msg = self.master.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=2)
@@ -69,6 +77,7 @@ class DroneController:
         time.sleep(8)
 
     def arm_and_takeoff(self):
+        # Record yaw
         self.initial_yaw_pre_takeoff = self.get_initial_yaw()
         print(f"Recorded pre-takeoff yaw: {self.initial_yaw_pre_takeoff}")
 
@@ -88,15 +97,14 @@ class DroneController:
             print("Arming failed.")
             sys.exit(1)
 
+        # Takeoff
         self.master.mav.command_long_send(
             self.master.target_system, self.master.target_component,
             mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
             0, 0,0,0,0,0,0, self.takeoff_altitude
         )
         print(f"Taking off to {self.takeoff_altitude}m...")
-        for _ in range(10):
-            self.check_voltage()
-            time.sleep(1)
+        time.sleep(10)
 
     def fly_to_point(self, x, y, z):
         self.master.mav.set_position_target_local_ned_send(
@@ -105,9 +113,7 @@ class DroneController:
             int(0b110111111000), x, y, -z, 0,0,0,0,0,0,0,0
         )
         print(f"Flying to {x},{y},{z}")
-        for _ in range(10):
-            self.check_voltage()
-            time.sleep(1)
+        time.sleep(10)
 
     def _rtl_and_land(self):
         self.master.set_mode_apm('RTL')

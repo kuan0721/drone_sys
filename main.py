@@ -5,7 +5,7 @@ import signal
 
 def main():
     #drone = DroneController('udp:127.0.0.1:14550')
-    drone = DroneController('/dev/ttyACM1')
+    drone = DroneController('/dev/ttyACM1', voltage_port='/dev/ttyUSB0', voltage_threshold=15.2)
     drone.connect()
 
     monitor = DataMonitor(drone)

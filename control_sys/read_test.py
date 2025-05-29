@@ -7,8 +7,7 @@ def low_voltage_alert(v):
     print(f"⚠️ Low voltage alert! Detected {v:.3f} V, battery is low!")
 
 if __name__ == "__main__":
-    reader = VoltageReader(port="COM12", baud=9600)
-    # You can also use '/dev/ttyUSB0' on Linux
+    reader = VoltageReader(port="/dev/ttyUSB0", baud=9600)
     # Register a callback: call low_voltage_alert when voltage < 15.0 V
     reader.register_callback(threshold=15.0, callback=low_voltage_alert)
     reader.start()
