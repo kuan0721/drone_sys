@@ -1,5 +1,3 @@
-
-# drone_control.py
 import time
 import sys
 import signal
@@ -14,7 +12,7 @@ class DroneController:
     def __init__(self, connection_string, voltage_port, voltage_threshold=15.2,
                  voltage_baud=9600, takeoff_altitude=15, square_size=10):
         self.connection_string = connection_string
-        self.voltage_threshold = voltage_threshold  # volts
+        self.voltage_threshold = voltage_threshold
         self.takeoff_altitude = takeoff_altitude
         self.square_size = square_size
 
@@ -42,15 +40,11 @@ class DroneController:
         print(f"Started voltage reader on {self.voltage_reader.port}")
 
     def _on_low_voltage(self, voltage):
-        """Callback when voltage falls below threshold."""
         print(f"⚠️ Voltage {voltage:.3f} V below threshold {self.voltage_threshold} V, initiating low-battery RTL")
-        # Record state
         self.recorded_position = self.get_gps_position()
         self.recorded_next_waypoint = self.next_waypoint
         self.recorded_yaw_low_battery = self.get_initial_yaw()
-        # Trigger RTL landing
         self.low_battery_rtl()
-        # Signal mission loop to handle resume
         raise LowBatteryResumeException()
 
     def get_arm_status(self):
@@ -77,7 +71,6 @@ class DroneController:
         time.sleep(8)
 
     def arm_and_takeoff(self):
-        # Record yaw
         self.initial_yaw_pre_takeoff = self.get_initial_yaw()
         print(f"Recorded pre-takeoff yaw: {self.initial_yaw_pre_takeoff}")
 
@@ -97,7 +90,6 @@ class DroneController:
             print("Arming failed.")
             sys.exit(1)
 
-        # Takeoff
         self.master.mav.command_long_send(
             self.master.target_system, self.master.target_component,
             mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
