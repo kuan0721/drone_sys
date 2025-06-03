@@ -1,1 +1,1 @@
-{"flight_mode": "LAND", "arm_status": "armed", "speed": 0.01, "altitude": 4.37, "battery": {"volt": 12.6, "current": null, "battery_percent": 100}, "gps_position": {"lat": -35.3632621, "lon": 149.1652376}, "attitude": {"pitch": -0.1, "yaw": -11.4, "roll": -0.0}}
+{"flight_mode": "STABILIZE", "arm_status": "disarmed", "speed": 0.0, "altitude": 0.0, "battery": {"volt": 15.59, "current": 0.0, "battery_percent": 100}, "gps_position": {"lat": 0.0, "lon": 0.0}, "attitude": {"pitch": -0.59, "roll": 1.19, "yaw": 87.91}}
