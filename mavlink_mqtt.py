@@ -98,8 +98,9 @@ def main():
     print(f"已連線 MQTT Broker：{MQTT_BROKER}:{MQTT_PORT}，Topic：{MQTT_TOPIC}")
 
     try:
+        battery_present_last_time = 0
+
         while True:
-            # 快速抓取一輪各 MAVLink 訊息（0.3秒內最新一包）
             messages = {}
             start = time.time()
             while time.time() - start < 0.3:
@@ -110,8 +111,13 @@ def main():
                 if msg.get_type() == 'BAD_DATA':
                     continue
                 messages[msg.get_type()] = msg
+                if msg.get_type() == "SYS_STATUS":
+                    battery_present_last_time = time.time()
 
-            # 預設資料
+            # 判斷這一輪是否有收到 SYS_STATUS（10 秒內有就算 True）
+            now = time.time()
+            battery_present = (now - battery_present_last_time) < 10
+
             payload = {
                 "flight_mode": None,
                 "arm_status": None,
@@ -120,7 +126,8 @@ def main():
                 "battery": {
                     "volt": None,
                     "current": None,
-                    "battery_percent": None
+                    "battery_percent": None,
+                    "battery_present": battery_present
                 },
                 "gps_position": {
                     "lat": None,
@@ -173,6 +180,9 @@ def main():
                     payload["battery"]["current"] = bat.current_battery / 100.0  # 換成 A
                 else:
                     payload["battery"]["current"] = None
+                payload["battery"]["battery_present"] = True
+            else:
+                payload["battery"]["battery_present"] = False
 
             # 6. 電壓（USB 讀取最新值）
             payload["battery"]["volt"] = voltage_reader.latest_voltage

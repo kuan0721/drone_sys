@@ -101,6 +101,7 @@ async function fetchHeight() {
 }
 
 // 電池
+// 電池
 async function fetchBatteryData() {
     try {
         const response = await fetch("/get_battery");
@@ -117,7 +118,7 @@ async function fetchBatteryData() {
         batteryProgressCircle.style.strokeDasharray = circumference;
         batteryProgressCircle.style.strokeDashoffset = dashOffset;
 
-        batteryPercentEl.textContent = `${percent}%`;
+        batteryPercentEl.textContent = `${percent}% (電壓計算)`;
         batteryVoltEl.textContent = `Volt: ${volt}V`;
         batteryCurrentEl.textContent = `Current: ${current}A`;
 
@@ -134,6 +135,7 @@ async function fetchBatteryData() {
         batteryCurrentEl.textContent = `Current: 0A`;
     }
 }
+
 
 // 飛行模式
 async function fetchFlightMode() {
@@ -214,63 +216,137 @@ async function updateDronePosition() {
     }
 }
 
-// 充電歷程 Chart.js
 const ctx = document.getElementById('chargingChart').getContext('2d');
 const chargingChart = new Chart(ctx, {
     type: 'line',
     data: {
         labels: [],
         datasets: [{
-            label: '電磁充電效率',
+            label: '充電百分比 (%)',
             data: [],
-            borderColor: 'cyan',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            pointBackgroundColor: 'black',
-            pointRadius: 5
+            borderColor: '#00ff88',
+            backgroundColor: 'rgba(0, 255, 136, 0.1)',
+            borderWidth: 3,
+            pointBackgroundColor: '#00ff88',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            fill: true,
+            tension: 0.4
         }]
     },
     options: {
         responsive: true,
         maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: {
+                    color: '#ffffff',
+                    font: {
+                        size: 14
+                    }
+                }
+            },
+            title: {
+                display: true,
+                text: '電池充電曲線',
+                color: '#ffffff',
+                font: {
+                    size: 16
+                }
+            }
+        },
         scales: {
             y: {
                 beginAtZero: true,
                 max: 100,
+                ticks: {
+                    color: '#ffffff',
+                    callback: function(value) {
+                        return value + '%';
+                    }
+                },
+                grid: {
+                    color: 'rgba(255, 255, 255, 0.1)'
+                },
                 title: {
                     display: true,
-                    text: '充電百分比 (%)'
+                    text: '充電百分比 (%)',
+                    color: '#ffffff'
                 }
             },
             x: {
+                ticks: {
+                    color: '#ffffff'
+                },
+                grid: {
+                    color: 'rgba(255, 255, 255, 0.1)'
+                },
                 title: {
                     display: true,
-                    text: '時間 (分:秒)'
+                    text: '充電時間 (分:秒)',
+                    color: '#ffffff'
                 }
             }
         },
-        plugins: {
-            legend: {
-                labels: {
-                    color: 'black'
-                }
-            }
+        interaction: {
+            intersect: false,
+            mode: 'index'
         }
     }
 });
 
-// 充電資料
-async function fetchChargingData() {
+// 新增充電數據更新函數
+async function updateChargingChart() {
     try {
-        const response = await fetch('/get_charge_data');
+        const response = await fetch('/get_latest_charging_curve');
         const data = await response.json();
-        // 若有時間戳與百分比資料再填充，否則略過
-        // chargingChart.data.labels = data.timestamps ?? [];
-        // chargingChart.data.datasets[0].data = data.percentages ?? [];
-        // chargingChart.update();
+        
+        // 更新圖表數據
+        chargingChart.data.labels = data.labels;
+        chargingChart.data.datasets[0].data = data.data;
+        
+        // 更新圖表標題顯示充電狀態
+        if (data.session_info) {
+            const info = data.session_info;
+            let titleText = '電池充電曲線';
+            
+            if (info.is_complete) {
+                titleText += ` - 已完成 (${info.duration_minutes.toFixed(1)}分鐘)`;
+            } else {
+                titleText += ' - 充電中...';
+            }
+            
+            chargingChart.options.plugins.title.text = titleText;
+        }
+        
+        chargingChart.update('none'); // 使用 'none' 模式進行平滑更新
+        
     } catch (error) {
-        // do nothing
+        console.error('更新充電圖表時發生錯誤:', error);
     }
+}
+
+// 顯示充電統計信息
+async function displayChargingStats() {
+    try {
+        const response = await fetch('/get_charging_history');
+        const data = await response.json();
+        
+        if (data.total_sessions > 0) {
+            const latest = data.charging_sessions[data.charging_sessions.length - 1];
+            console.log(`總充電次數: ${data.total_sessions}`);
+            console.log(`最新充電: ${latest.start_time} - 持續${latest.duration_minutes}分鐘`);
+        }
+    } catch (error) {
+        console.error('獲取充電統計時發生錯誤:', error);
+    }
+}
+
+// 修改原有的 fetchChargingData 函數
+async function fetchChargingData() {
+    await updateChargingChart();
+    await displayChargingStats();
 }
 
 // 排程，每1秒定期刷新主要資料
@@ -279,7 +355,7 @@ setInterval(fetchHeight, 10);
 setInterval(fetchBatteryData, 10);
 setInterval(fetchFlightMode, 10);
 setInterval(fetchArmingStatus, 10);
-setInterval(fetchRTKStatus, 1);
+setInterval(fetchRTKStatus, 10);
 setInterval(fetchDroneOrientation, 10);
 setInterval(updateDronePosition, 10);
 // 充電歷程每5秒
