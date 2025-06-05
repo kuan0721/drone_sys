@@ -185,5 +185,26 @@ def get_latest_charging_curve():
         "session_info": session_info
     })
 
+drone_controller = None
+try:
+    # 依你的設計要有一個全域 DroneController 實例
+    from control_sys.drone_control import DroneController
+    drone_controller = DroneController(
+        connection_string='/dev/ttyACM1',
+        voltage_port='/dev/ttyUSB0'
+    )
+    drone_controller.connect()
+except Exception as e:
+    print("無法初始化 DroneController：", e)
+
+@app.route("/start_charging_monitor", methods=['POST'])
+def start_charging_monitor():
+    global drone_controller
+    if drone_controller:
+        drone_controller.start_charging_monitor()
+        return jsonify({"status": "ok", "msg": "已啟動充電紀錄"})
+    else:
+        return jsonify({"status": "fail", "msg": "無法連接 DroneController"})
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
