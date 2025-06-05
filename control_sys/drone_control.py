@@ -228,37 +228,54 @@ class DroneController:
         time.sleep(10)
 
     def _rtl_and_land(self):
+        print("開始 RTL → GUIDED → 轉航向 yaw → RTL 降落流程")
+
+        # 1. 切 RTL 模式，開始返航
         self.master.set_mode_apm('RTL')
+        print("已切換至 RTL 模式，等待確認")
+        
+        # 2. 等待無人機真正切入 RTL 模式（custom_mode == 6）
         while True:
             hb = self.master.recv_match(type='HEARTBEAT', blocking=True)
             if hb and hb.custom_mode == 6:
+                print("確認進入 RTL 模式")
                 break
             time.sleep(0.5)
+
         adjusted = False
-        while True:
+        landed = False
+
+        while not landed:
             msg = self.master.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
             if not msg:
                 continue
-            alt = msg.relative_alt / 1000.0
+
+            alt = msg.relative_alt / 1000.0  # 公尺
+
             if alt <= 9 and not adjusted:
+                # 3. 接近返航點附近，切換 GUIDED 模式
                 self.master.set_mode_apm('GUIDED')
-                time.sleep(1)
+                print("切換至 GUIDED 模式")
+
+                time.sleep(1)  # 等待模式切換穩定
+
+                # 4. 轉航向 yaw
                 self.rotate_yaw(self.initial_yaw_pre_takeoff)
-                self.master.mav.command_long_send(
-                    self.master.target_system, self.master.target_component,
-                    mavutil.mavlink.MAV_CMD_NAV_LAND,
-                    0, 0,0,0,0,0,0,0
-                )
+                print(f"完成航向轉向 yaw={self.initial_yaw_pre_takeoff}")
+
+                # 5. 切回 RTL 繼續自動降落
+                self.master.set_mode_apm('RTL')
+                print("切回 RTL 模式，繼續自動降落")
+
                 adjusted = True
-                
-                # 降落後開始充電監控
-                if alt <= 0.5:  # 接近地面時開始充電
-                    print("🔋 無人機已降落，開始充電程序...")
-                    self.start_charging_monitor()
-                    
+
+            # 6. 等待降落完成 (低於0.2公尺高度)
             if adjusted and alt <= 0.2:
-                break
+                print("降落完成")
+                landed = True
+
             time.sleep(0.2)
+
 
     def low_battery_rtl(self):
         print("Low-Battery RTL...")
